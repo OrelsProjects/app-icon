@@ -30,14 +30,21 @@ export const buildPreviewBoxShadow = (config: LogoConfig) => {
   return `${config.shadowOffsetX}px ${config.shadowOffsetY}px ${config.shadowBlur}px ${config.shadowSpread}px ${shadowRgba(config)}`;
 };
 
-export const buildSvgDropShadow = (config: LogoConfig) => {
+export const buildSvgDropShadow = (
+  config: LogoConfig,
+  /** Scale filter units when exporting larger than the 512 preview (e.g. 4 for 2048 PNG). */
+  unitScale = 1,
+) => {
   if (!config.shadow) return "";
   const { r, g, b } = hexToRgb(config.shadowColor);
   const opacity = Math.min(1, Math.max(0, config.shadowOpacity / 100));
-  const deviation = Math.max(0, config.shadowBlur / 2);
+  const scale = Number.isFinite(unitScale) && unitScale > 0 ? unitScale : 1;
+  const deviation = Math.max(0, (config.shadowBlur / 2) * scale);
+  const dx = config.shadowOffsetX * scale;
+  const dy = config.shadowOffsetY * scale;
   return `<defs>
   <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-    <feDropShadow dx="${config.shadowOffsetX}" dy="${config.shadowOffsetY}" stdDeviation="${deviation}" flood-color="rgb(${r},${g},${b})" flood-opacity="${opacity.toFixed(3)}" />
+    <feDropShadow dx="${dx}" dy="${dy}" stdDeviation="${deviation}" flood-color="rgb(${r},${g},${b})" flood-opacity="${opacity.toFixed(3)}" />
   </filter>
 </defs>`;
 };

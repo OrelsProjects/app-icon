@@ -99,7 +99,7 @@ export const Canvas = ({
           initial={reduceMotion ? false : "hidden"}
           animate="show"
         >
-          512 × 512 · SVG + PNG · {config.icon.packName}
+          SVG 512 · PNG 2048 · {config.icon.packName}
         </motion.p>
       </motion.div>
 

@@ -12,16 +12,20 @@ import {
 } from "./gradient";
 import { buildSvgDropShadow } from "./shadow";
 
-const EXPORT_SIZE = 512;
+/** Vector SVG download size (scales cleanly in any tool). */
+export const SVG_EXPORT_SIZE = 512;
+/** Raster PNG at high native resolution (App Store / retina-ready). */
+export const PNG_EXPORT_SIZE = 2048;
 
-const radiusFor = (rounded: number) => (rounded / 100) * (EXPORT_SIZE / 2);
+const radiusFor = (rounded: number, exportSize: number) =>
+  (rounded / 100) * (exportSize / 2);
 
-const iconBox = (config: LogoConfig) => {
-  const pad = (config.padding / 100) * EXPORT_SIZE * 0.35;
-  const available = EXPORT_SIZE - pad * 2;
+const iconBox = (config: LogoConfig, exportSize: number) => {
+  const pad = (config.padding / 100) * exportSize * 0.35;
+  const available = exportSize - pad * 2;
   const size = (config.size / 100) * available;
-  const x = (EXPORT_SIZE - size) / 2;
-  const y = (EXPORT_SIZE - size) / 2;
+  const x = (exportSize - size) / 2;
+  const y = (exportSize - size) / 2;
   return { size, x, y, pad };
 };
 
@@ -58,10 +62,14 @@ const sizeIconSvg = (svg: string, size: number, color: string | null) => {
   return next;
 };
 
-/** Compose the 512×512 export SVG from a cached/prepared icon SVG. */
-export const tileMarkup = (config: LogoConfig, iconSvg: string) => {
-  const { size, x, y } = iconBox(config);
-  const radius = radiusFor(config.rounded);
+/** Compose an export SVG from a cached/prepared icon SVG. */
+export const tileMarkup = (
+  config: LogoConfig,
+  iconSvg: string,
+  exportSize: number = SVG_EXPORT_SIZE,
+) => {
+  const { size, x, y } = iconBox(config, exportSize);
+  const radius = radiusFor(config.rounded, exportSize);
   const stroked = config.icon.palette
     ? iconSvg
     : applyStrokeWidth(iconSvg, config.strokeWidth);
@@ -111,26 +119,32 @@ export const tileMarkup = (config: LogoConfig, iconSvg: string) => {
   }
 
   const fill = solid ? escapeXml(solid) : "url(#bg)";
-  const shadowFilter = buildSvgDropShadow(config);
+  const shadowFilter = buildSvgDropShadow(
+    config,
+    exportSize / SVG_EXPORT_SIZE,
+  );
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${EXPORT_SIZE}" height="${EXPORT_SIZE}" viewBox="0 0 ${EXPORT_SIZE} ${EXPORT_SIZE}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${exportSize}" height="${exportSize}" viewBox="0 0 ${exportSize} ${exportSize}">
   ${defs}
   ${shadowFilter}
-  <rect width="${EXPORT_SIZE}" height="${EXPORT_SIZE}" rx="${radius}" ry="${radius}" fill="${fill}" ${config.shadow ? 'filter="url(#shadow)"' : ""} />
+  <rect width="${exportSize}" height="${exportSize}" rx="${radius}" ry="${radius}" fill="${fill}" ${config.shadow ? 'filter="url(#shadow)"' : ""} />
   <g transform="translate(${x} ${y}) rotate(${config.rotate} ${size / 2} ${size / 2})">
     ${colored}
   </g>
 </svg>`;
 };
 
-export const composeLogoSvg = async (config: LogoConfig): Promise<string> => {
+export const composeLogoSvg = async (
+  config: LogoConfig,
+  exportSize: number = SVG_EXPORT_SIZE,
+): Promise<string> => {
   const { safeSvgOrNull } = await import("@/lib/svg-sanitize");
   const iconSvg =
     safeSvgOrNull(config.customSvg) ??
     getCachedIconSvg(config.icon.prefix, config.icon.name) ??
     (await fetchIcon(config.icon.prefix, config.icon.name));
-  return tileMarkup(config, iconSvg);
+  return tileMarkup(config, iconSvg, exportSize);
 };
 
 export const downloadBlob = (blob: Blob, filename: string) => {
@@ -142,45 +156,79 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
+const loadSvgImage = async (svg: string) => {
+  const svgUrl = URL.createObjectURL(
+    new Blob([svg], { type: "image/svg+xml;charset=utf-8" }),
+  );
+
+  try {
+    const image = new Image();
+    image.decoding = "sync";
+    // Helps some browsers honor crisp vector rasterization.
+    image.setAttribute("decoding", "sync");
+
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("PNG render failed"));
+      image.src = svgUrl;
+    });
+
+    if ("decode" in image) {
+      await image.decode().catch(() => undefined);
+    }
+
+    return image;
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+};
+
 export const exportLogo = async (
   config: LogoConfig,
   format: "svg" | "png",
 ) => {
-  const svg = await composeLogoSvg(config);
   const base = `${config.icon.name}-app-logo`;
 
   if (format === "svg") {
-    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `${base}.svg`);
+    const svg = await composeLogoSvg(config, SVG_EXPORT_SIZE);
+    downloadBlob(
+      new Blob([svg], { type: "image/svg+xml;charset=utf-8" }),
+      `${base}.svg`,
+    );
     return;
   }
 
-  const image = new Image();
-  const svgUrl = URL.createObjectURL(
-    new Blob([svg], { type: "image/svg+xml" }),
-  );
-
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve();
-    image.onerror = () => reject(new Error("PNG render failed"));
-    image.src = svgUrl;
-  });
+  // Rasterize from a native high-res SVG — never upscale a small bitmap.
+  const svg = await composeLogoSvg(config, PNG_EXPORT_SIZE);
+  const image = await loadSvgImage(svg);
 
   const canvas = document.createElement("canvas");
-  canvas.width = EXPORT_SIZE;
-  canvas.height = EXPORT_SIZE;
-  const ctx = canvas.getContext("2d");
+  canvas.width = PNG_EXPORT_SIZE;
+  canvas.height = PNG_EXPORT_SIZE;
+  const ctx = canvas.getContext("2d", {
+    alpha: true,
+    colorSpace: "srgb",
+  });
   if (!ctx) throw new Error("Canvas unavailable");
-  ctx.drawImage(image, 0, 0);
-  URL.revokeObjectURL(svgUrl);
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.clearRect(0, 0, PNG_EXPORT_SIZE, PNG_EXPORT_SIZE);
+  ctx.drawImage(image, 0, 0, PNG_EXPORT_SIZE, PNG_EXPORT_SIZE);
 
   await new Promise<void>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error("PNG export failed"));
-        return;
-      }
-      downloadBlob(blob, `${base}.png`);
-      resolve();
-    }, "image/png");
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("PNG export failed"));
+          return;
+        }
+        downloadBlob(blob, `${base}.png`);
+        resolve();
+      },
+      "image/png",
+      // PNG is lossless; 1 asks browsers for maximum fidelity where applicable.
+      1,
+    );
   });
 };
