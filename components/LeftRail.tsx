@@ -38,7 +38,7 @@ export const LeftRail = ({
           label="Size"
           value={config.size}
           min={20}
-          max={90}
+          max={100}
           format={(v) => `${Math.round(v)}%`}
           onChange={(size) => onUpdate({ size })}
         />

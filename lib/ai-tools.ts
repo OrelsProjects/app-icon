@@ -80,7 +80,7 @@ export const AI_TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          size: { type: "number", minimum: 20, maximum: 90 },
+          size: { type: "number", minimum: 20, maximum: 100 },
           rotate: { type: "number", minimum: -180, maximum: 180 },
           strokeWidth: { type: "number", minimum: 0.5, maximum: 3.5 },
           weight: { type: ["string", "null"] },

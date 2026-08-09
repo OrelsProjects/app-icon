@@ -410,7 +410,7 @@ export const useLogoStore = () => {
           next = {
             ...next,
             size:
-              action.size != null ? clamp(action.size, 20, 90) : next.size,
+              action.size != null ? clamp(action.size, 20, 100) : next.size,
             rotate:
               action.rotate != null
                 ? clamp(action.rotate, -180, 180)
