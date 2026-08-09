@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { AI_TOOLS, buildSystemPrompt } from "@/lib/ai-tools";
 import { fetchIcon, resolveIconMeta, searchIconsForAi } from "@/lib/iconify";
+import {
+  captureServerEvent,
+  distinctIdFromRequest,
+} from "@/lib/posthog-server";
 import { isAiAllowedPrefix, PRESETS } from "@/lib/presets";
 import { sanitizeIconSvg } from "@/lib/svg-sanitize";
 import type { AiAction, AiApplied } from "@/lib/types";
@@ -536,7 +540,14 @@ const finalizeResponse = async (
 
 export async function POST(request: Request) {
   const apiKey = process.env.OPENROUTER_API_KEY;
+  const distinctId = distinctIdFromRequest(request);
+  const startedAt = Date.now();
+
   if (!apiKey) {
+    void captureServerEvent(distinctId, "ai_request_failed", {
+      error: "missing_openrouter_key",
+      status: 503,
+    });
     return NextResponse.json(
       {
         error:
@@ -760,11 +771,27 @@ export async function POST(request: Request) {
           logoSummary,
         );
         send({ type: "done", ...final });
+        void captureServerEvent(distinctId, "ai_request_completed", {
+          model: MODEL,
+          duration_ms: Date.now() - startedAt,
+          action_count: collected.length,
+          action_types: collected.map((action) => action.type).join(","),
+          wants_svg_edit: wantsSvgEdit,
+          message_count: messages.length,
+        });
         controller.close();
       } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "AI request failed";
         send({
           type: "error",
-          error: error instanceof Error ? error.message : "AI request failed",
+          error: message,
+        });
+        void captureServerEvent(distinctId, "ai_request_failed", {
+          model: MODEL,
+          duration_ms: Date.now() - startedAt,
+          error: message,
+          wants_svg_edit: wantsSvgEdit,
         });
         controller.close();
       }

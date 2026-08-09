@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { GradientEditor } from "@/components/GradientEditor";
 import { ColorSwatches } from "@/components/ui/ColorSwatches";
 import { EyedropperButton } from "@/components/ui/EyedropperButton";
+import { analytics } from "@/lib/analytics";
 import {
   BACKGROUND_COLORS,
   BACKGROUND_GRADIENTS,
@@ -28,6 +29,8 @@ export const BackgroundPicker = ({ value, onChange }: BackgroundPickerProps) => 
   const mode: Mode = isGradient(value) ? "gradient" : "solid";
 
   const handleMode = (next: Mode) => {
+    if (next === mode) return;
+    analytics.backgroundModeChanged({ mode: next });
     if (next === "solid" && isGradient(value)) {
       const parsed = parseGradient(value);
       onChange(parsed?.stops[0]?.color ?? BACKGROUND_COLORS[0]);

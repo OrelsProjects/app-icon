@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChevronDown, History, RotateCcw, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { LogoThumb } from "@/components/LogoThumb";
+import { analytics } from "@/lib/analytics";
 import { PRESETS } from "@/lib/presets";
 import { exportLogo } from "@/lib/export";
 import { fadeScale, springSnappy } from "@/lib/motion";
@@ -56,6 +57,12 @@ export const Header = ({
     setMenuOpen(false);
     try {
       await exportLogo(config, format);
+      analytics.logoExported({ format });
+    } catch (error) {
+      analytics.logoExportFailed({
+        format,
+        error: error instanceof Error ? error.message : "export_failed",
+      });
     } finally {
       setExporting(false);
     }

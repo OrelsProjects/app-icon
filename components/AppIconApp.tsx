@@ -6,6 +6,7 @@ import { Canvas } from "@/components/Canvas";
 import { Header } from "@/components/Header";
 import { IconPickerModal } from "@/components/IconPickerModal";
 import { LeftRail } from "@/components/LeftRail";
+import { analytics } from "@/lib/analytics";
 import { fetchIcon } from "@/lib/iconify";
 import { springSnappy } from "@/lib/motion";
 import { useLogoStore } from "@/lib/use-logo-store";
@@ -70,8 +71,17 @@ export const AppIconApp = () => {
             config={store.config}
             zoom={zoom}
             darkPreview={darkPreview}
-            onZoomChange={setZoom}
-            onToggleDark={() => setDarkPreview((value) => !value)}
+            onZoomChange={(next) => {
+              setZoom(next);
+              analytics.canvasZoomChanged({ zoom: next });
+            }}
+            onToggleDark={() => {
+              setDarkPreview((value) => {
+                const next = !value;
+                analytics.canvasPreviewToggled({ dark: next });
+                return next;
+              });
+            }}
             onRandomize={store.randomize}
           />
 
@@ -81,7 +91,10 @@ export const AppIconApp = () => {
               className={`focus-ring relative z-10 flex-1 py-3 text-[13px] font-semibold ${
                 mobileTab === "style" ? "text-ink" : "text-ink-2"
               }`}
-              onClick={() => setMobileTab("style")}
+              onClick={() => {
+                setMobileTab("style");
+                analytics.mobileTabChanged({ tab: "style" });
+              }}
             >
               Style
             </button>
@@ -90,7 +103,10 @@ export const AppIconApp = () => {
               className={`focus-ring relative z-10 flex-1 py-3 text-[13px] font-semibold ${
                 mobileTab === "ai" ? "text-ink" : "text-ink-2"
               }`}
-              onClick={() => setMobileTab("ai")}
+              onClick={() => {
+                setMobileTab("ai");
+                analytics.mobileTabChanged({ tab: "ai" });
+              }}
             >
               AI
             </button>

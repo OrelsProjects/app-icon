@@ -4,6 +4,7 @@ import { IconSvg } from "@/components/IconSvg";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUp, Square, SquarePen, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { analytics } from "@/lib/analytics";
 import { fadeRise, popIn, springSnappy } from "@/lib/motion";
 import type {
   AiAction,
@@ -170,7 +171,7 @@ export const AiAssistant = ({
     historySummary,
   ].join("\n");
 
-  const send = async (text: string) => {
+  const send = async (text: string, viaSuggestion = false) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
 
@@ -185,6 +186,11 @@ export const AiAssistant = ({
     setError(null);
     setLoading(true);
     setStatusSteps(["Thinking…"]);
+    analytics.aiMessageSent({
+      char_count: trimmed.length,
+      via_suggestion: viaSuggestion,
+      suggestion: viaSuggestion ? trimmed : undefined,
+    });
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -290,6 +296,15 @@ export const AiAssistant = ({
         applied = await onApplyActions(donePayload.actions);
       }
 
+      const actionTypes = (donePayload.actions ?? []).map(
+        (action) => action.type,
+      );
+      analytics.aiResponseReceived({
+        action_types: actionTypes,
+        action_count: actionTypes.length,
+        has_applied: Boolean(donePayload.actions?.length),
+      });
+
       setMessages((prev) => [
         ...prev,
         {
@@ -310,7 +325,10 @@ export const AiAssistant = ({
           },
         ]);
       } else {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        const message =
+          err instanceof Error ? err.message : "Something went wrong";
+        setError(message);
+        analytics.aiError({ error: message });
       }
     } finally {
       setLoading(false);
@@ -320,6 +338,7 @@ export const AiAssistant = ({
   };
 
   const handleStop = () => {
+    analytics.aiStopped();
     abortRef.current?.abort();
   };
 
@@ -331,6 +350,7 @@ export const AiAssistant = ({
     setError(null);
     setInput("");
     setMessages([{ ...INTRO_MESSAGE, id: "intro" }]);
+    analytics.aiChatReset();
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
@@ -523,7 +543,10 @@ export const AiAssistant = ({
               key={suggestion}
               type="button"
               className="focus-ring rounded-full bg-ai-soft px-3 py-1.5 text-[12px] font-semibold text-ai"
-              onClick={() => void send(suggestion)}
+              onClick={() => {
+                analytics.aiSuggestionClicked({ suggestion });
+                void send(suggestion, true);
+              }}
               disabled={loading}
               whileHover={reduceMotion ? undefined : { scale: 1.04 }}
               whileTap={reduceMotion ? undefined : { scale: 0.96 }}

@@ -3,6 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Search, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { analytics } from "@/lib/analytics";
 import { fadeScale, springSnappy } from "@/lib/motion";
 import { fetchIcon, thumbnailUrl } from "@/lib/iconify";
 import { FEATURED_PACKS, getPackBadge } from "@/lib/presets";
@@ -40,9 +41,15 @@ export const IconPickerModal = ({
     return () => window.clearTimeout(timer);
   }, [query, open]);
 
+  const handleClose = useCallback(() => {
+    analytics.iconPickerClosed();
+    onClose();
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     searchRef.current?.focus();
+    analytics.iconPickerOpened();
   }, [open]);
 
   useEffect(() => {
@@ -50,12 +57,12 @@ export const IconPickerModal = ({
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (packsOpen) setPacksOpen(false);
-        else onClose();
+        else handleClose();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [open, onClose, packsOpen]);
+  }, [open, handleClose, packsOpen]);
 
   const loadIcons = useCallback(
     async (start = 0, append = false) => {
@@ -77,7 +84,16 @@ export const IconPickerModal = ({
         if (data.error) throw new Error(data.error);
         setIcons((prev) => (append ? [...prev, ...data.icons] : data.icons));
         setTotal(data.total);
-        if (!append) setFocusIndex(0);
+        if (!append) {
+          setFocusIndex(0);
+          if (debouncedQuery || prefix) {
+            analytics.iconSearched({
+              query: debouncedQuery,
+              prefix,
+              result_count: data.total,
+            });
+          }
+        }
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -99,7 +115,13 @@ export const IconPickerModal = ({
     };
   }, [open, loadIcons]);
 
+  const handlePrefixChange = (next: string | null) => {
+    setPrefix(next);
+    analytics.packFilterChanged({ prefix: next });
+  };
+
   const loadAllPacks = async () => {
+    analytics.packsBrowserOpened();
     if (allPacks.length) {
       setPacksOpen(true);
       return;
@@ -119,7 +141,7 @@ export const IconPickerModal = ({
       license: icon.license,
       palette: icon.palette,
     });
-    onClose();
+    handleClose();
   };
 
   const handleGridKeyDown = (event: ReactKeyboardEvent) => {
@@ -166,7 +188,7 @@ export const IconPickerModal = ({
             type="button"
             className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]"
             aria-label="Close icon picker"
-            onClick={onClose}
+            onClick={handleClose}
             initial={reduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={reduceMotion ? undefined : { opacity: 0 }}
@@ -191,7 +213,7 @@ export const IconPickerModal = ({
             className="focus-ring flex h-9 w-9 items-center justify-center rounded-full border border-line text-ink hover:bg-bg"
             aria-label="Close"
             title="Close"
-            onClick={onClose}
+            onClick={handleClose}
           >
             <X className="h-4 w-4" />
           </button>
@@ -222,7 +244,7 @@ export const IconPickerModal = ({
                   ? "bg-ink text-white"
                   : "border border-line bg-bg text-ink-2"
               }`}
-              onClick={() => setPrefix(null)}
+              onClick={() => handlePrefixChange(null)}
             >
               All packs
             </button>
@@ -235,7 +257,7 @@ export const IconPickerModal = ({
                     ? "bg-ink text-white"
                     : "border border-line bg-bg text-ink-2"
                 }`}
-                onClick={() => setPrefix(pack.prefix)}
+                onClick={() => handlePrefixChange(pack.prefix)}
               >
                 {pack.name}
               </button>
@@ -377,7 +399,7 @@ export const IconPickerModal = ({
                       type="button"
                       className="focus-ring flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left hover:bg-bg"
                       onClick={() => {
-                        setPrefix(pack.prefix);
+                        handlePrefixChange(pack.prefix);
                         setPacksOpen(false);
                       }}
                     >

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { analytics } from "./analytics";
 import {
   AI_ICON_PACKS,
   DEFAULT_CONFIG,
@@ -192,6 +193,7 @@ export const useLogoStore = () => {
     if (current.index <= 0) return;
     const index = current.index - 1;
     persist({ ...current, index });
+    analytics.logoUndone();
   }, [persist]);
 
   const redo = useCallback(() => {
@@ -199,6 +201,7 @@ export const useLogoStore = () => {
     if (current.index >= current.entries.length - 1) return;
     const index = current.index + 1;
     persist({ ...current, index });
+    analytics.logoRedone();
   }, [persist]);
 
   const restoreVersion = useCallback(
@@ -207,6 +210,7 @@ export const useLogoStore = () => {
       const index = current.entries.findIndex((entry) => entry.id === id);
       if (index < 0) return false;
       persist({ ...current, index });
+      analytics.logoVersionRestored({ version_id: id, source: "history" });
       return true;
     },
     [persist],
@@ -224,6 +228,12 @@ export const useLogoStore = () => {
         weight: icon.prefix.startsWith("ph") ? icon.prefix : null,
       };
       commit(next, "manual");
+      analytics.iconSelected({
+        prefix: icon.prefix,
+        name: icon.name,
+        pack_name: icon.packName,
+        source: "picker",
+      });
     },
     [commit],
   );
@@ -233,6 +243,7 @@ export const useLogoStore = () => {
       const current = sessionRef.current;
       const prev = current.entries[current.index]?.config ?? DEFAULT_CONFIG;
       commit({ ...prev, ...patch }, "manual");
+      analytics.logoUpdated({ fields: Object.keys(patch) });
     },
     [commit],
   );
@@ -245,6 +256,7 @@ export const useLogoStore = () => {
       const prev = current.entries[current.index]?.config ?? DEFAULT_CONFIG;
       const next = applyPresetToConfig(prev, preset);
       commit(next, "preset", `Preset · ${preset.name}`);
+      analytics.presetApplied({ preset_id: preset.id, preset_name: preset.name });
     },
     [commit],
   );
@@ -269,6 +281,17 @@ export const useLogoStore = () => {
         strokeWidth: Number((1.5 + Math.random() * 1.2).toFixed(2)),
       };
       commit(next, "random", labelForConfig(next, "random"));
+      analytics.logoRandomized({
+        preset_id: preset.id,
+        icon_prefix: icon.prefix,
+        icon_name: icon.name,
+      });
+      analytics.iconSelected({
+        prefix: icon.prefix,
+        name: icon.name,
+        pack_name: icon.packName,
+        source: "random",
+      });
     })();
   }, [commit]);
 
@@ -420,8 +443,20 @@ export const useLogoStore = () => {
         }
       }
 
+      const actionTypes = actions.map((action) => action.type);
+
       if (restoredOnly && applied.restored) {
         persist(workingSession);
+        analytics.logoVersionRestored({
+          version_id: applied.restored.id,
+          source: "ai",
+        });
+        analytics.aiActionsApplied({
+          action_types: actionTypes,
+          action_count: actions.length,
+          restored: true,
+          svg_edited: false,
+        });
         return applied;
       }
 
@@ -433,6 +468,28 @@ export const useLogoStore = () => {
       const entry = createHistoryEntry(next, "ai", label);
       const updated = pushEntry(workingSession, entry);
       persist(updated);
+
+      if (applied.icon) {
+        analytics.iconSelected({
+          prefix: applied.icon.prefix,
+          name: applied.icon.name,
+          pack_name: applied.icon.packName,
+          source: "ai",
+        });
+      }
+      if (applied.preset) {
+        analytics.presetApplied({
+          preset_id: applied.preset.id,
+          preset_name: applied.preset.name,
+        });
+      }
+      analytics.aiActionsApplied({
+        action_types: actionTypes,
+        action_count: actions.length,
+        restored: Boolean(applied.restored),
+        svg_edited: Boolean(applied.svgEdited),
+      });
+
       return applied;
     },
     [persist],
@@ -454,7 +511,10 @@ export const useLogoStore = () => {
     undo,
     redo,
     restoreVersion,
-    reset: () => commit(DEFAULT_CONFIG, "manual", "Reset · Sparkles"),
+    reset: () => {
+      commit(DEFAULT_CONFIG, "manual", "Reset · Sparkles");
+      analytics.logoReset();
+    },
     setIcon,
     update,
     applyPreset,
