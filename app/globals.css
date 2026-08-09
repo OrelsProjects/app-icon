@@ -1,26 +1,151 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f6f6f5;
+  --panel: #ffffff;
+  --ink: #18181b;
+  --ink-2: #6b6b70;
+  --ink-3: #9a9aa0;
+  --line: #ececea;
+  --accent: #ff5a00;
+  --accent-soft: #fff1e9;
+  --ai: #6d5ef6;
+  --ai-soft: #eeebff;
+  --radius-frame: 22px;
+  --radius-modal: 20px;
+  --radius-panel: 16px;
+  --radius-cell: 12px;
+  --radius-control: 10px;
+  --shadow: 0 8px 24px -12px rgba(24, 24, 27, 0.12);
+  --shadow-modal: 0 20px 60px -20px rgba(24, 24, 27, 0.35);
+  --font-ui: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
+  --font-sans: var(--font-ui);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.dotted-canvas {
+  background-color: #eef0ee;
+  background-image: radial-gradient(#d5d7d4 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.dotted-canvas-dark {
+  background-color: #1c1c1f;
+  background-image: radial-gradient(#3a3a40 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-fade-rise {
+  animation: fade-rise 180ms ease-out;
+}
+
+.animate-pop {
+  animation: pop 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-rise,
+  .animate-pop {
+    animation: none;
+  }
+}
+
+/* Slider */
+input[type="range"].forge-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  outline: none;
+}
+
+input[type="range"].forge-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(24, 24, 27, 0.15);
+  cursor: pointer;
+}
+
+input[type="range"].forge-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(24, 24, 27, 0.15);
+  cursor: pointer;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
