@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import {
   AI_ICON_PACKS,
   DEFAULT_CONFIG,
@@ -131,28 +131,47 @@ const pickRandomIcon = async (): Promise<LogoIcon> => {
 const configsEqual = (a: LogoConfig, b: LogoConfig) =>
   JSON.stringify(a) === JSON.stringify(b);
 
-export const useLogoStore = () => {
-  const [session, setSession] = useState<SessionState>(() => defaultSession());
-  const [config, setConfig] = useState<LogoConfig>(DEFAULT_CONFIG);
-  const [ready, setReady] = useState(false);
-  const sessionRef = useRef(session);
+const serverSession = defaultSession();
+let clientSession: SessionState | null = null;
+const sessionListeners = new Set<() => void>();
 
+const subscribeSession = (onStoreChange: () => void) => {
+  sessionListeners.add(onStoreChange);
+  return () => {
+    sessionListeners.delete(onStoreChange);
+  };
+};
+
+const getClientSession = () => {
+  if (!clientSession) clientSession = loadSession();
+  return clientSession;
+};
+
+const getServerSession = () => serverSession;
+
+const writeSession = (next: SessionState) => {
+  clientSession = next;
+  saveSession(next);
+  sessionListeners.forEach((listener) => listener());
+};
+
+export const useLogoStore = () => {
+  const session = useSyncExternalStore(
+    subscribeSession,
+    getClientSession,
+    getServerSession,
+  );
+  const sessionRef = useRef(session);
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
 
-  useEffect(() => {
-    const loaded = loadSession();
-    setSession(loaded);
-    setConfig(loaded.entries[loaded.index]?.config ?? DEFAULT_CONFIG);
-    setReady(true);
-  }, []);
+  const config =
+    session.entries[session.index]?.config ?? DEFAULT_CONFIG;
 
-  const persist = useCallback((next: SessionState, nextConfig: LogoConfig) => {
+  const persist = useCallback((next: SessionState) => {
     sessionRef.current = next;
-    setSession(next);
-    setConfig(nextConfig);
-    saveSession(next);
+    writeSession(next);
   }, []);
 
   const commit = useCallback(
@@ -163,7 +182,7 @@ export const useLogoStore = () => {
 
       const entry = createHistoryEntry(next, source, label);
       const updated = pushEntry(current, entry);
-      persist(updated, next);
+      persist(updated);
     },
     [persist],
   );
@@ -172,16 +191,14 @@ export const useLogoStore = () => {
     const current = sessionRef.current;
     if (current.index <= 0) return;
     const index = current.index - 1;
-    const updated = { ...current, index };
-    persist(updated, updated.entries[index].config);
+    persist({ ...current, index });
   }, [persist]);
 
   const redo = useCallback(() => {
     const current = sessionRef.current;
     if (current.index >= current.entries.length - 1) return;
     const index = current.index + 1;
-    const updated = { ...current, index };
-    persist(updated, updated.entries[index].config);
+    persist({ ...current, index });
   }, [persist]);
 
   const restoreVersion = useCallback(
@@ -189,8 +206,7 @@ export const useLogoStore = () => {
       const current = sessionRef.current;
       const index = current.entries.findIndex((entry) => entry.id === id);
       if (index < 0) return false;
-      const updated = { ...current, index };
-      persist(updated, updated.entries[index].config);
+      persist({ ...current, index });
       return true;
     },
     [persist],
@@ -405,7 +421,7 @@ export const useLogoStore = () => {
       }
 
       if (restoredOnly && applied.restored) {
-        persist(workingSession, next);
+        persist(workingSession);
         return applied;
       }
 
@@ -416,7 +432,7 @@ export const useLogoStore = () => {
           : labelForConfig(next, "ai");
       const entry = createHistoryEntry(next, "ai", label);
       const updated = pushEntry(workingSession, entry);
-      persist(updated, next);
+      persist(updated);
       return applied;
     },
     [persist],
@@ -426,7 +442,7 @@ export const useLogoStore = () => {
 
   return {
     config,
-    ready,
+    ready: true,
     activePresetId: findActivePresetId(config),
     history: Array.isArray(session.entries)
       ? (session.entries as HistoryEntry[])

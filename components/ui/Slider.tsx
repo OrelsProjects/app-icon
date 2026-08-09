@@ -44,22 +44,16 @@ export const Slider = ({
 }: SliderProps) => {
   const pct = ((value - min) / (max - min)) * 100;
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(format(value));
+  const [draft, setDraft] = useState(() => format(value));
   const inputRef = useRef<HTMLInputElement>(null);
+  const isEditing = editing && !disabled;
+  const shown = isEditing ? draft : format(value);
 
   useEffect(() => {
-    if (!editing) setDraft(format(value));
-  }, [value, format, editing]);
-
-  useEffect(() => {
-    if (!editing) return;
+    if (!isEditing) return;
     inputRef.current?.focus();
     inputRef.current?.select();
-  }, [editing]);
-
-  useEffect(() => {
-    if (disabled) setEditing(false);
-  }, [disabled]);
+  }, [isEditing]);
 
   const commitDraft = () => {
     const parsed = parse(draft);
@@ -91,7 +85,7 @@ export const Slider = ({
     >
       <div className="flex items-center justify-between gap-3">
         <span className="text-[13px] font-medium text-ink">{label}</span>
-        {editing && !disabled ? (
+        {isEditing ? (
           <input
             ref={inputRef}
             type="text"
@@ -108,7 +102,7 @@ export const Slider = ({
             type="button"
             tabIndex={disabled ? -1 : 0}
             disabled={disabled}
-            aria-label={`Edit ${label} value, currently ${format(value)}`}
+            aria-label={`Edit ${label} value, currently ${shown}`}
             title={`Click to edit ${label.toLowerCase()}`}
             className="focus-ring tabular rounded-[8px] px-1.5 py-0.5 text-[13px] text-ink-2 transition hover:bg-bg hover:text-ink disabled:hover:bg-transparent"
             onClick={() => {
@@ -117,7 +111,7 @@ export const Slider = ({
               setEditing(true);
             }}
           >
-            {format(value)}
+            {shown}
           </button>
         )}
       </div>

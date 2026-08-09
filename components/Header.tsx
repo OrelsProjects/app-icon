@@ -91,7 +91,8 @@ export const Header = ({
         </span>
         <div
           className="flex max-w-[min(420px,46vw)] items-center gap-2.5 overflow-x-auto px-1.5 py-2"
-          role="list"
+          role="group"
+          aria-label="Presets"
         >
           {PRESETS.map((preset, index) => {
             const selected = activePresetId === preset.id;
@@ -99,7 +100,6 @@ export const Header = ({
               <motion.button
                 key={preset.id}
                 type="button"
-                role="listitem"
                 tabIndex={0}
                 aria-label={`Apply ${preset.name} preset`}
                 aria-pressed={selected}

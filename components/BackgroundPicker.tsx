@@ -1,7 +1,6 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useEffect, useState } from "react";
 import { GradientEditor } from "@/components/GradientEditor";
 import { ColorSwatches } from "@/components/ui/ColorSwatches";
 import { EyedropperButton } from "@/components/ui/EyedropperButton";
@@ -26,16 +25,9 @@ type Mode = "solid" | "gradient";
 
 export const BackgroundPicker = ({ value, onChange }: BackgroundPickerProps) => {
   const reduceMotion = useReducedMotion();
-  const [mode, setMode] = useState<Mode>(
-    isGradient(value) ? "gradient" : "solid",
-  );
-
-  useEffect(() => {
-    setMode(isGradient(value) ? "gradient" : "solid");
-  }, [value]);
+  const mode: Mode = isGradient(value) ? "gradient" : "solid";
 
   const handleMode = (next: Mode) => {
-    setMode(next);
     if (next === "solid" && isGradient(value)) {
       const parsed = parseGradient(value);
       onChange(parsed?.stops[0]?.color ?? BACKGROUND_COLORS[0]);

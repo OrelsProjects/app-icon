@@ -88,7 +88,15 @@ export const IconPickerModal = ({
 
   useEffect(() => {
     if (!open) return;
-    void loadIcons(0, false);
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      await loadIcons(0, false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [open, loadIcons]);
 
   const loadAllPacks = async () => {

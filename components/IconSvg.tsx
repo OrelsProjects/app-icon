@@ -14,6 +14,12 @@ type IconSvgProps = {
   title?: string;
 };
 
+type FetchState = {
+  key: string;
+  svg: string | null;
+  failed: boolean;
+};
+
 export const IconSvg = ({
   prefix,
   name,
@@ -23,32 +29,37 @@ export const IconSvg = ({
   className = "",
   title,
 }: IconSvgProps) => {
-  const [svg, setSvg] = useState<string | null>(svgProp ?? null);
-  const [failed, setFailed] = useState(false);
+  const iconKey = `${prefix}:${name}`;
+  const [fetched, setFetched] = useState<FetchState>({
+    key: iconKey,
+    svg: null,
+    failed: false,
+  });
 
   useEffect(() => {
-    if (svgProp) {
-      setFailed(false);
-      setSvg(svgProp);
-      return;
-    }
+    if (svgProp) return;
 
     let cancelled = false;
-    setFailed(false);
-    setSvg(null);
+    const key = `${prefix}:${name}`;
 
     void fetchIcon(prefix, name)
       .then((prepared) => {
-        if (!cancelled) setSvg(prepared);
+        if (cancelled) return;
+        setFetched({ key, svg: prepared, failed: false });
       })
       .catch(() => {
-        if (!cancelled) setFailed(true);
+        if (cancelled) return;
+        setFetched({ key, svg: null, failed: true });
       });
 
     return () => {
       cancelled = true;
     };
   }, [prefix, name, svgProp]);
+
+  const svg =
+    svgProp ?? (fetched.key === iconKey ? fetched.svg : null);
+  const failed = !svgProp && fetched.key === iconKey && fetched.failed;
 
   if (failed) {
     return (

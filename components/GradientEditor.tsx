@@ -37,8 +37,9 @@ export const GradientEditor = ({ value, onChange }: GradientEditorProps) => {
   const [activeId, setActiveId] = useState(
     () => (parsed?.stops ?? defaultGradientStops())[0]?.id ?? "",
   );
+  const [prevValue, setPrevValue] = useState(value);
+  const [lastEmitted, setLastEmitted] = useState(value);
   const barRef = useRef<HTMLDivElement>(null);
-  const lastCss = useRef(value);
   const typeRef = useRef(type);
   const angleRef = useRef(angle);
   const stopsRef = useRef(stops);
@@ -46,24 +47,29 @@ export const GradientEditor = ({ value, onChange }: GradientEditorProps) => {
   const dragId = useRef<string | null>(null);
   const dragAt = useRef<number | null>(null);
 
-  typeRef.current = type;
-  angleRef.current = angle;
-  stopsRef.current = stops;
+  if (value !== prevValue) {
+    setPrevValue(value);
+    if (value !== lastEmitted) {
+      const next = parseGradient(value);
+      if (next) {
+        setLastEmitted(value);
+        setType(next.type);
+        setAngle(next.angle);
+        setStops(next.stops);
+        setActiveId((current) =>
+          next.stops.some((stop) => stop.id === current)
+            ? current
+            : (next.stops[0]?.id ?? ""),
+        );
+      }
+    }
+  }
 
   useEffect(() => {
-    if (value === lastCss.current) return;
-    const next = parseGradient(value);
-    if (!next) return;
-    lastCss.current = value;
-    setType(next.type);
-    setAngle(next.angle);
-    setStops(next.stops);
-    setActiveId((current) =>
-      next.stops.some((stop) => stop.id === current)
-        ? current
-        : (next.stops[0]?.id ?? ""),
-    );
-  }, [value]);
+    typeRef.current = type;
+    angleRef.current = angle;
+    stopsRef.current = stops;
+  }, [type, angle, stops]);
 
   useEffect(
     () => () => {
@@ -82,7 +88,7 @@ export const GradientEditor = ({ value, onChange }: GradientEditorProps) => {
     nextStops = stopsRef.current,
   ) => {
     const css = buildGradientCss(nextType, nextAngle, nextStops);
-    lastCss.current = css;
+    setLastEmitted(css);
     typeRef.current = nextType;
     angleRef.current = nextAngle;
     stopsRef.current = nextStops;
