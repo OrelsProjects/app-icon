@@ -629,7 +629,7 @@ export async function POST(request: Request) {
               Authorization: `Bearer ${apiKey}`,
               "Content-Type": "application/json",
               "HTTP-Referer":
-                process.env.OPENROUTER_SITE_URL ?? "http://localhost:3000",
+                process.env.OPENROUTER_SITE_URL ?? "https://www.app-icon.com",
               "X-Title": "App-Icon",
             },
             body: JSON.stringify({
