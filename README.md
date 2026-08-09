@@ -1,6 +1,6 @@
-# App-Icon
+# App-Logo
 
-One-screen app icon maker: pick any free Iconify pack, style a 512×512 tile, download SVG + PNG — or describe what you want and let the AI assistant do it.
+One-screen app logo maker: pick any free Iconify pack, style a 512×512 tile, download SVG + PNG — or describe what you want and let the AI assistant do it.
 
 ## Setup
 

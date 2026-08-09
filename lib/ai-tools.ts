@@ -160,7 +160,7 @@ export const AI_TOOLS = [
   },
 ] as const;
 
-export const buildSystemPrompt = (logoSummary: string) => `You are the App-Icon AI assistant. You design app logo tiles: pick an icon from the top 10 packs and apply a full coordinated preset.
+export const buildSystemPrompt = (logoSummary: string) => `You are the App-Logo AI assistant. You design app logo tiles: pick an icon from the top 10 packs and apply a full coordinated preset.
 
 Allowed packs only (top 10): ${packList}.
 - searchIcons only searches these packs. Never use any other prefix in setIcon.

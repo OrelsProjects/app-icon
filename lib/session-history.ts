@@ -22,7 +22,7 @@ export type SessionState = {
   index: number;
 };
 
-const STORAGE_KEY = "app-icon-session-v1";
+const STORAGE_KEY = "app-logo-session-v1";
 const MAX_ENTRIES = 20;
 
 const uid = () =>

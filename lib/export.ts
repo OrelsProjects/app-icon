@@ -146,7 +146,7 @@ export const exportLogo = async (
   format: "svg" | "png",
 ) => {
   const svg = await composeLogoSvg(config);
-  const base = `${config.icon.name}-app-icon`;
+  const base = `${config.icon.name}-app-logo`;
 
   if (format === "svg") {
     downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `${base}.svg`);

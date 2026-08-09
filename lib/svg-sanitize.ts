@@ -16,7 +16,7 @@ export type SanitizeSvgResult =
   | { ok: true; svg: string }
   | { ok: false; error: string };
 
-/** Strip dangerous markup and normalize for App-Icon rendering. */
+/** Strip dangerous markup and normalize for App-Logo rendering. */
 export const sanitizeIconSvg = (raw: string): SanitizeSvgResult => {
   if (typeof raw !== "string" || !raw.trim()) {
     return { ok: false, error: "SVG is empty" };

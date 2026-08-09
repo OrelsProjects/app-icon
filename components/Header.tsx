@@ -81,7 +81,7 @@ export const Header = ({
           <Zap className="h-4 w-4 fill-current" />
         </motion.div>
         <span className="text-[17px] font-bold tracking-tight text-ink">
-          App-Icon
+          App-Logo
         </span>
       </div>
 
