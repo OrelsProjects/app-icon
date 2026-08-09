@@ -27,7 +27,8 @@ if (token) {
       "app-icon-orelsportfolio.vercel.app",
     ],
     session_recording: {
-      maskAllInputs: false,
+      maskAllInputs: true,
+      maskTextSelector: ".ph-mask",
       maskInputOptions: {
         password: true,
       },
@@ -37,7 +38,6 @@ if (token) {
       if (process.env.NODE_ENV === "development") {
         client.debug(false);
       }
-      // Ensure replay starts even if project defaults are conservative.
       if (typeof client.startSessionRecording === "function") {
         client.startSessionRecording();
       }

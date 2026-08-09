@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { loadPicker, searchIcons } from "@/lib/iconify";
+import { clampText, enforceRateLimit } from "@/lib/request-guards";
 
 export async function GET(request: Request) {
+  const limited = enforceRateLimit(request, "icons", 60, 60_000);
+  if (!limited.ok) return limited.response;
+
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get("query") ?? "";
-  const prefix = searchParams.get("prefix");
+  const query = clampText(searchParams.get("query") ?? "", 80);
+  const prefix = clampText(searchParams.get("prefix") ?? "", 64) || null;
   const start = Number(searchParams.get("start") ?? "0");
   const mode = searchParams.get("mode") ?? "picker";
 
@@ -14,20 +18,17 @@ export async function GET(request: Request) {
         query: query || "a",
         prefix: prefix || undefined,
         limit: 96,
-        start: Number.isFinite(start) ? start : 0,
+        start: Number.isFinite(start) ? Math.max(0, Math.min(start, 5000)) : 0,
       });
       return NextResponse.json(result);
     }
 
     const result = await loadPicker({
       query,
-      prefix: prefix || null,
+      prefix,
     });
     return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Search failed" },
-      { status: 500 },
-    );
+  } catch {
+    return NextResponse.json({ error: "Search failed" }, { status: 500 });
   }
 }

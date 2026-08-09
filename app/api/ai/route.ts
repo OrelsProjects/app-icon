@@ -1,11 +1,21 @@
 import { NextResponse } from "next/server";
 import { AI_TOOLS, buildSystemPrompt } from "@/lib/ai-tools";
 import { fetchIcon, resolveIconMeta, searchIconsForAi } from "@/lib/iconify";
+import { enforceAiCaptcha } from "@/lib/captcha-gate";
 import {
   captureServerEvent,
   distinctIdFromRequest,
 } from "@/lib/posthog-server";
 import { isAiAllowedPrefix, PRESETS } from "@/lib/presets";
+import {
+  MAX_AI_BODY_BYTES,
+  MAX_LOGO_SUMMARY_CHARS,
+  MAX_MESSAGE_CHARS,
+  MAX_MESSAGES,
+  clampText,
+  enforceRateLimit,
+  readJsonBody,
+} from "@/lib/request-guards";
 import { sanitizeIconSvg } from "@/lib/svg-sanitize";
 import type { AiAction, AiApplied } from "@/lib/types";
 
@@ -35,6 +45,11 @@ type IconContext = {
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
+const AI_ENABLED = process.env.AI_ENABLED !== "false";
+const MAX_TOOL_STEPS = Math.min(
+  8,
+  Math.max(1, Number(process.env.AI_MAX_STEPS ?? 5)),
+);
 
 /** Completion cap sent to OpenRouter as `max_tokens` (higher default for SVG edits). */
 const MAX_TOKENS = Number(process.env.OPENROUTER_MAX_TOKENS ?? 2048);
@@ -43,6 +58,8 @@ const MAX_TOKENS = Number(process.env.OPENROUTER_MAX_TOKENS ?? 2048);
  * Oldest messages are dropped until we fit.
  */
 const MAX_INPUT_TOKENS = Number(process.env.OPENROUTER_MAX_INPUT_TOKENS ?? 4000);
+
+const GENERIC_AI_ERROR = "AI request failed. Please try again.";
 
 type StatusEvent = { type: "status"; text: string };
 type DoneEvent = {
@@ -79,9 +96,6 @@ const wittyToolStatus = (toolName: string): string | null => {
 
 const encodeEvent = (event: StreamEvent) =>
   `${JSON.stringify(event)}\n`;
-
-const clampText = (value: string, max: number) =>
-  value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 
 /** Rough token estimate — good enough for budget trimming (≈4 chars/token). */
 const estimateTokens = (text: string) =>
@@ -543,21 +557,33 @@ export async function POST(request: Request) {
   const distinctId = distinctIdFromRequest(request);
   const startedAt = Date.now();
 
+  if (!AI_ENABLED) {
+    return NextResponse.json(
+      { error: "AI assistant is temporarily disabled." },
+      { status: 503 },
+    );
+  }
+
+  const minuteLimit = enforceRateLimit(request, "ai-min", 12, 60_000);
+  if (!minuteLimit.ok) return minuteLimit.response;
+  const hourLimit = enforceRateLimit(request, "ai-hour", 60, 60 * 60_000);
+  if (!hourLimit.ok) return hourLimit.response;
+
+  const captcha = await enforceAiCaptcha(request);
+  if (!captcha.ok) return captcha.response;
+
   if (!apiKey) {
     void captureServerEvent(distinctId, "ai_request_failed", {
       error: "missing_openrouter_key",
       status: 503,
     });
     return NextResponse.json(
-      {
-        error:
-          "Missing OPENROUTER_API_KEY. Add it to .env.local to enable the AI assistant.",
-      },
+      { error: "AI assistant is not configured." },
       { status: 503 },
     );
   }
 
-  const body = (await request.json()) as {
+  const parsed = await readJsonBody<{
     messages?: IncomingMessage[];
     logoSummary?: string;
     icon?: {
@@ -565,9 +591,13 @@ export async function POST(request: Request) {
       name?: string;
       customSvg?: string | null;
     };
-  };
+  }>(request, MAX_AI_BODY_BYTES);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
-  const logoSummary = body.logoSummary ?? "default sparkles cream";
+  const logoSummary =
+    clampText(body.logoSummary, MAX_LOGO_SUMMARY_CHARS) ||
+    "default sparkles cream";
   const systemContent = buildSystemPrompt(logoSummary);
   const systemTokens = estimateTokens(systemContent);
   const chatBudget = Math.max(
@@ -575,7 +605,20 @@ export async function POST(request: Request) {
     MAX_INPUT_TOKENS - systemTokens - 600,
   );
 
-  const messages = trimChatByTokens(body.messages ?? [], chatBudget);
+  const rawMessages = Array.isArray(body.messages)
+    ? body.messages.slice(-MAX_MESSAGES).map((message) => ({
+        role:
+          message?.role === "assistant"
+            ? ("assistant" as const)
+            : ("user" as const),
+        content: clampText(message?.content, MAX_MESSAGE_CHARS),
+      }))
+    : [];
+
+  const messages = trimChatByTokens(
+    rawMessages.filter((message) => message.content),
+    chatBudget,
+  );
   if (messages.length === 0) {
     return NextResponse.json({ error: "messages required" }, { status: 400 });
   }
@@ -583,13 +626,20 @@ export async function POST(request: Request) {
   const collected: AiAction[] = [];
   const userText = lastUserText(messages);
   const wantsSvgEdit = isSvgEditRequest(userText);
+
+  let customSvg: string | null = null;
+  if (
+    typeof body.icon?.customSvg === "string" &&
+    body.icon.customSvg.trim()
+  ) {
+    const sanitized = sanitizeIconSvg(body.icon.customSvg);
+    customSvg = sanitized.ok ? sanitized.svg : null;
+  }
+
   const iconContext: IconContext = {
-    prefix: body.icon?.prefix?.trim() || "lucide",
-    name: body.icon?.name?.trim() || "sparkles",
-    customSvg:
-      typeof body.icon?.customSvg === "string" && body.icon.customSvg.trim()
-        ? body.icon.customSvg
-        : null,
+    prefix: clampText(body.icon?.prefix, 64) || "lucide",
+    name: clampText(body.icon?.name, 128) || "sparkles",
+    customSvg,
   };
   let fetchedCurrentSvg = false;
   let svgEditNudgeSent = false;
@@ -618,7 +668,7 @@ export async function POST(request: Request) {
       send({ type: "status", text: "Thinking…" });
 
       try {
-        for (let step = 0; step < 8; step += 1) {
+        for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
           const hasSvgEdit = collected.some(
             (action) => action.type === "editIconSvg",
           );
@@ -654,10 +704,17 @@ export async function POST(request: Request) {
           });
 
           if (!res.ok) {
-            const errText = await res.text();
+            const errText = await res.text().catch(() => "");
+            console.error("OpenRouter error", res.status, errText.slice(0, 500));
+            void captureServerEvent(distinctId, "ai_request_failed", {
+              model: MODEL,
+              duration_ms: Date.now() - startedAt,
+              error: `openrouter_${res.status}`,
+              wants_svg_edit: wantsSvgEdit,
+            });
             send({
               type: "error",
-              error: `OpenRouter error: ${errText}`,
+              error: GENERIC_AI_ERROR,
             });
             controller.close();
             return;
@@ -685,7 +742,11 @@ export async function POST(request: Request) {
               wantsSvgEdit &&
               !collected.some((action) => action.type === "editIconSvg");
 
-            if (stillNeedsSvg && !svgEditNudgeSent && step < 6) {
+            if (
+              stillNeedsSvg &&
+              !svgEditNudgeSent &&
+              step < MAX_TOOL_STEPS - 2
+            ) {
               svgEditNudgeSent = true;
               send({
                 type: "status",
@@ -741,7 +802,7 @@ export async function POST(request: Request) {
           const editedSvg = collected.some(
             (action) => action.type === "editIconSvg",
           );
-          if (wantsSvgEdit && !editedSvg && step < 7) {
+          if (wantsSvgEdit && !editedSvg && step < MAX_TOOL_STEPS - 1) {
             stripNonSvgEditActions(collected);
             if (!svgEditNudgeSent) {
               svgEditNudgeSent = true;
@@ -781,16 +842,15 @@ export async function POST(request: Request) {
         });
         controller.close();
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "AI request failed";
+        console.error("AI route failure", error);
         send({
           type: "error",
-          error: message,
+          error: GENERIC_AI_ERROR,
         });
         void captureServerEvent(distinctId, "ai_request_failed", {
           model: MODEL,
           duration_ms: Date.now() - startedAt,
-          error: message,
+          error: "unhandled",
           wants_svg_edit: wantsSvgEdit,
         });
         controller.close();

@@ -1,4 +1,5 @@
 import { DEFAULT_CONFIG } from "./presets";
+import { safeSvgOrNull } from "./svg-sanitize";
 import type { LogoConfig } from "./types";
 
 export type HistorySource =
@@ -88,10 +89,11 @@ export const loadSession = (): SessionState => {
           ...DEFAULT_CONFIG,
           ...entry.config,
           icon: { ...DEFAULT_CONFIG.icon, ...entry.config.icon },
-          customSvg:
+          customSvg: safeSvgOrNull(
             typeof entry.config.customSvg === "string"
               ? entry.config.customSvg
               : null,
+          ),
         },
       }))
       .slice(-MAX_ENTRIES);

@@ -1,5 +1,6 @@
 "use client";
 
+import { CaptchaModal } from "@/components/CaptchaModal";
 import { IconSvg } from "@/components/IconSvg";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUp, Square, SquarePen, Sparkles } from "lucide-react";
@@ -119,10 +120,36 @@ export const AiAssistant = ({
   const [loading, setLoading] = useState(false);
   const [statusSteps, setStatusSteps] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [captchaOpen, setCaptchaOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const captchaResolverRef = useRef<((token: string | null) => void) | null>(
+    null,
+  );
   const reduceMotion = useReducedMotion();
+
+  const requestCaptchaToken = () =>
+    new Promise<string | null>((resolve) => {
+      if (!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+        resolve(null);
+        return;
+      }
+      captchaResolverRef.current = resolve;
+      setCaptchaOpen(true);
+    });
+
+  const handleCaptchaSuccess = (token: string) => {
+    setCaptchaOpen(false);
+    captchaResolverRef.current?.(token);
+    captchaResolverRef.current = null;
+  };
+
+  const handleCaptchaCancel = () => {
+    setCaptchaOpen(false);
+    captchaResolverRef.current?.(null);
+    captchaResolverRef.current = null;
+  };
 
   const canStartNew = messages.length > 1 || Boolean(input.trim()) || loading;
 
@@ -203,20 +230,49 @@ export const AiAssistant = ({
           content: message.content,
         }));
 
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: payloadMessages,
-          logoSummary,
-          icon: {
-            prefix: config.icon.prefix,
-            name: config.icon.name,
-            customSvg: config.customSvg,
-          },
-        }),
-        signal: controller.signal,
+      const body = JSON.stringify({
+        messages: payloadMessages,
+        logoSummary,
+        icon: {
+          prefix: config.icon.prefix,
+          name: config.icon.name,
+          customSvg: config.customSvg,
+        },
       });
+
+      const postAi = (captchaToken?: string) =>
+        fetch("/api/ai", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(captchaToken ? { "x-captcha-token": captchaToken } : {}),
+          },
+          body,
+          signal: controller.signal,
+        });
+
+      let res = await postAi();
+
+      if (res.status === 403) {
+        const errData = (await res.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        if (
+          errData?.code === "captcha_required" ||
+          errData?.code === "captcha_failed"
+        ) {
+          setStatusSteps(["Security check…"]);
+          const captchaToken = await requestCaptchaToken();
+          if (!captchaToken) {
+            throw new Error("Security check cancelled");
+          }
+          setStatusSteps(["Thinking…"]);
+          res = await postAi(captchaToken);
+        } else {
+          throw new Error(errData?.error ?? "AI request failed");
+        }
+      }
 
       if (!res.ok) {
         const errData = (await res.json().catch(() => null)) as {
@@ -339,12 +395,14 @@ export const AiAssistant = ({
 
   const handleStop = () => {
     analytics.aiStopped();
+    handleCaptchaCancel();
     abortRef.current?.abort();
   };
 
   const handleNewChat = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    handleCaptchaCancel();
     setLoading(false);
     setStatusSteps([]);
     setError(null);
@@ -415,7 +473,7 @@ export const AiAssistant = ({
               animate="show"
             >
               <div
-                className={`max-w-[92%] rounded-[16px] px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                className={`ph-mask max-w-[92%] rounded-[16px] px-3.5 py-2.5 text-[13px] leading-relaxed ${
                   message.role === "user"
                     ? "ml-auto bg-ink text-white"
                     : "bg-ai-soft text-ink"
@@ -567,8 +625,10 @@ export const AiAssistant = ({
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder="Ask AI to help with your icon…"
-            className="focus-ring min-w-0 flex-1 rounded-full border border-line bg-bg px-4 py-2.5 text-[13px] text-ink placeholder:text-ink-3"
+            className="ph-mask focus-ring min-w-0 flex-1 rounded-full border border-line bg-bg px-4 py-2.5 text-[13px] text-ink placeholder:text-ink-3"
             disabled={loading}
+            autoComplete="off"
+            maxLength={2000}
           />
           <AnimatePresence mode="wait" initial={false}>
             {loading ? (
@@ -610,6 +670,12 @@ export const AiAssistant = ({
           use
         </p>
       </div>
+
+      <CaptchaModal
+        open={captchaOpen}
+        onCancel={handleCaptchaCancel}
+        onSuccess={handleCaptchaSuccess}
+      />
     </motion.aside>
   );
 };

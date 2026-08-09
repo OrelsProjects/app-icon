@@ -1,16 +1,23 @@
 import { prepareIconSvg } from "./iconify";
 
-const MAX_SVG_BYTES = 28_000;
+export const MAX_SVG_BYTES = 28_000;
 
 const FORBIDDEN_TAGS =
-  /<\/?(?:script|foreignObject|iframe|object|embed|link|meta|style)\b[^>]*>/gi;
+  /<\/?(?:script|foreignObject|iframe|object|embed|link|meta|style|animate|animateTransform|animateMotion|set|handler|listener)\b[^>]*>/gi;
 
 const EVENT_HANDLER_ATTR = /\s+on[a-z]+\s*=\s*(["']).*?\1/gi;
 const EVENT_HANDLER_UNQUOTED = /\s+on[a-z]+\s*=\s*[^\s>]+/gi;
-const JS_URL = /(?:href|xlink:href|src)\s*=\s*(["'])\s*javascript:/gi;
+const HTML_COMMENTS = /<!--[\s\S]*?-->/g;
+const CDATA = /<!\[CDATA\[[\s\S]*?\]\]>/gi;
+
+/** Keep only fragment refs (#id); block javascript:/data:/http(s): urls. */
+const UNSAFE_URL_ATTR =
+  /\s(?:href|xlink:href|src|from|to)\s*=\s*(["'])\s*(?!#)[^"']*\1/gi;
+const UNSAFE_URL_UNQUOTED =
+  /\s(?:href|xlink:href|src|from|to)\s*=\s*(?!#)[^\s>]+/gi;
 
 const EXTERNAL_IMAGE =
-  /<image\b[^>]*(?:href|xlink:href)\s*=\s*(["'])\s*https?:\/\/[^"']*\1[^>]*>/gi;
+  /<image\b[^>]*(?:href|xlink:href)\s*=\s*(["'])\s*(?:https?:|data:)[^"']*\1[^>]*>/gi;
 
 export type SanitizeSvgResult =
   | { ok: true; svg: string }
@@ -38,11 +45,14 @@ export const sanitizeIconSvg = (raw: string): SanitizeSvgResult => {
   }
 
   svg = svg
+    .replace(HTML_COMMENTS, "")
+    .replace(CDATA, "")
     .replace(FORBIDDEN_TAGS, "")
     .replace(EVENT_HANDLER_ATTR, "")
     .replace(EVENT_HANDLER_UNQUOTED, "")
-    .replace(JS_URL, 'href="#" data-blocked="javascript" ')
-    .replace(EXTERNAL_IMAGE, "");
+    .replace(EXTERNAL_IMAGE, "")
+    .replace(UNSAFE_URL_ATTR, ' href="#" data-blocked="url" ')
+    .replace(UNSAFE_URL_UNQUOTED, ' href="#" data-blocked="url" ');
 
   // Keep only the first <svg>...</svg> document
   const match = svg.match(/<svg\b[\s\S]*<\/svg>/i);
@@ -64,5 +74,16 @@ export const sanitizeIconSvg = (raw: string): SanitizeSvgResult => {
     return { ok: false, error: "Prepared SVG is invalid" };
   }
 
+  if (prepared.length > MAX_SVG_BYTES) {
+    return { ok: false, error: `SVG too large (max ${MAX_SVG_BYTES} bytes)` };
+  }
+
   return { ok: true, svg: prepared };
+};
+
+/** Best-effort sanitize for render/load paths — drops unsafe SVG instead of throwing. */
+export const safeSvgOrNull = (raw: string | null | undefined): string | null => {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const result = sanitizeIconSvg(raw);
+  return result.ok ? result.svg : null;
 };

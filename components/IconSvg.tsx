@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { applyStrokeWidth, fetchIcon } from "@/lib/iconify";
+import { safeSvgOrNull } from "@/lib/svg-sanitize";
 
 type IconSvgProps = {
   prefix: string;
@@ -57,9 +58,11 @@ export const IconSvg = ({
     };
   }, [prefix, name, svgProp]);
 
-  const svg =
-    svgProp ?? (fetched.key === iconKey ? fetched.svg : null);
-  const failed = !svgProp && fetched.key === iconKey && fetched.failed;
+  const customSvg = svgProp ? safeSvgOrNull(svgProp) : null;
+  const svg = customSvg ?? (fetched.key === iconKey ? fetched.svg : null);
+  const failed =
+    Boolean(svgProp && !customSvg) ||
+    (!svgProp && fetched.key === iconKey && fetched.failed);
 
   if (failed) {
     return (

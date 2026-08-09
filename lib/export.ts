@@ -125,8 +125,9 @@ export const tileMarkup = (config: LogoConfig, iconSvg: string) => {
 };
 
 export const composeLogoSvg = async (config: LogoConfig): Promise<string> => {
+  const { safeSvgOrNull } = await import("@/lib/svg-sanitize");
   const iconSvg =
-    config.customSvg ??
+    safeSvgOrNull(config.customSvg) ??
     getCachedIconSvg(config.icon.prefix, config.icon.name) ??
     (await fetchIcon(config.icon.prefix, config.icon.name));
   return tileMarkup(config, iconSvg);
