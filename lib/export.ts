@@ -10,7 +10,7 @@ import {
   parseGradient,
   rgbaString,
 } from "./gradient";
-import { buildSvgDropShadow } from "./shadow";
+import { buildSvgDropShadow, shadowExportPadding } from "./shadow";
 
 /** Vector SVG download size (scales cleanly in any tool). */
 export const SVG_EXPORT_SIZE = 512;
@@ -19,6 +19,17 @@ export const PNG_EXPORT_SIZE = 2048;
 
 const radiusFor = (rounded: number, exportSize: number) =>
   (rounded / 100) * (exportSize / 2);
+
+const exportFrame = (config: LogoConfig, exportSize: number) => {
+  const scale = exportSize / SVG_EXPORT_SIZE;
+  const padding = shadowExportPadding(config, scale);
+  return {
+    width: exportSize + padding.left + padding.right,
+    height: exportSize + padding.top + padding.bottom,
+    padding,
+    scale,
+  };
+};
 
 const iconBox = (config: LogoConfig, exportSize: number) => {
   const pad = (config.padding / 100) * exportSize * 0.35;
@@ -119,18 +130,19 @@ export const tileMarkup = (
   }
 
   const fill = solid ? escapeXml(solid) : "url(#bg)";
-  const shadowFilter = buildSvgDropShadow(
-    config,
-    exportSize / SVG_EXPORT_SIZE,
-  );
+  const frame = exportFrame(config, exportSize);
+  const shadowFilter = buildSvgDropShadow(config, frame.scale);
+  const { left, top } = frame.padding;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${exportSize}" height="${exportSize}" viewBox="0 0 ${exportSize} ${exportSize}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}" viewBox="0 0 ${frame.width} ${frame.height}" overflow="visible">
   ${defs}
   ${shadowFilter}
-  <rect width="${exportSize}" height="${exportSize}" rx="${radius}" ry="${radius}" fill="${fill}" ${config.shadow ? 'filter="url(#shadow)"' : ""} />
-  <g transform="translate(${x} ${y}) rotate(${config.rotate} ${size / 2} ${size / 2})">
-    ${colored}
+  <g transform="translate(${left} ${top})">
+    <rect width="${exportSize}" height="${exportSize}" rx="${radius}" ry="${radius}" fill="${fill}" ${config.shadow ? 'filter="url(#shadow)"' : ""} />
+    <g transform="translate(${x} ${y}) rotate(${config.rotate} ${size / 2} ${size / 2})">
+      ${colored}
+    </g>
   </g>
 </svg>`;
 };
@@ -201,10 +213,13 @@ export const exportLogo = async (
   // Rasterize from a native high-res SVG — never upscale a small bitmap.
   const svg = await composeLogoSvg(config, PNG_EXPORT_SIZE);
   const image = await loadSvgImage(svg);
+  const frame = exportFrame(config, PNG_EXPORT_SIZE);
+  const canvasWidth = Math.max(frame.width, image.naturalWidth || 0);
+  const canvasHeight = Math.max(frame.height, image.naturalHeight || 0);
 
   const canvas = document.createElement("canvas");
-  canvas.width = PNG_EXPORT_SIZE;
-  canvas.height = PNG_EXPORT_SIZE;
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
   const ctx = canvas.getContext("2d", {
     alpha: true,
     colorSpace: "srgb",
@@ -213,8 +228,8 @@ export const exportLogo = async (
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.clearRect(0, 0, PNG_EXPORT_SIZE, PNG_EXPORT_SIZE);
-  ctx.drawImage(image, 0, 0, PNG_EXPORT_SIZE, PNG_EXPORT_SIZE);
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+  ctx.drawImage(image, 0, 0, canvasWidth, canvasHeight);
 
   await new Promise<void>((resolve, reject) => {
     canvas.toBlob(
